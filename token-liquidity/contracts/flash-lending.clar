@@ -18,6 +18,7 @@
 (define-constant ERR-INVALID-TOKEN-CONTRACT (err u113))
 (define-constant ERR-INVALID-BORROWING-LIMIT (err u114))
 (define-constant ERR-BORROWING-LIMIT-TOO-HIGH (err u115))
+(define-constant ERR-INVALID-USER (err u116))
 
 ;; Define fungible tokens
 (define-fungible-token governance-governance-token)
@@ -47,6 +48,8 @@
 (define-map user-proposal-votes {voting-user: principal, proposal-identifier: uint} bool)
 (define-map user-borrowing-limits principal uint)
 (define-map supported-token-contracts principal bool)
+(define-map validated-users principal bool)
+(define-map validated-contracts principal bool)
 
 ;; Define custom token type
 (define-trait token-interface
@@ -59,6 +62,32 @@
 ;; Helper function to check if a token is supported
 (define-private (is-token-supported (token-contract <token-interface>))
   (default-to false (map-get? supported-token-contracts (contract-of token-contract)))
+)
+
+;; Helper function to validate user
+(define-private (validate-user (user principal))
+  (begin
+    (map-set validated-users user true)
+    (ok true)
+  )
+)
+
+;; Helper function to validate contract
+(define-private (validate-contract (contract principal))
+  (begin
+    (map-set validated-contracts contract true)
+    (ok true)
+  )
+)
+
+;; Helper function to check if user is validated
+(define-private (is-validated-user (user principal))
+  (default-to false (map-get? validated-users user))
+)
+
+;; Helper function to check if contract is validated
+(define-private (is-validated-contract (contract principal))
+  (default-to false (map-get? validated-contracts contract))
 )
 
 ;; Governance token minting function (simplified for demonstration)
@@ -218,6 +247,9 @@
         (asserts! (is-eq tx-sender CONTRACT-ADMIN) ERR-ADMIN-ONLY)
         (asserts! (> borrowing-limit u0) ERR-INVALID-BORROWING-LIMIT)
         (asserts! (<= borrowing-limit u1000000000) ERR-BORROWING-LIMIT-TOO-HIGH)
+        ;; Validate and store user before setting limit
+        (asserts! (is-ok (validate-user user-address)) ERR-INVALID-USER)
+        (asserts! (is-validated-user user-address) ERR-INVALID-USER)
         (map-set user-borrowing-limits user-address borrowing-limit)
         (print {event: "user-borrowing-limit-set", user: user-address, limit: borrowing-limit})
         (ok true)
@@ -228,6 +260,9 @@
 (define-public (add-supported-token-contract (token-contract principal))
     (begin
         (asserts! (is-eq tx-sender CONTRACT-ADMIN) ERR-ADMIN-ONLY)
+        ;; Validate and store contract before adding support
+        (asserts! (is-ok (validate-contract token-contract)) ERR-INVALID-TOKEN-CONTRACT)
+        (asserts! (is-validated-contract token-contract) ERR-INVALID-TOKEN-CONTRACT)
         (map-set supported-token-contracts token-contract true)
         (print {event: "token-contract-supported", token-contract: token-contract})
         (ok true)
